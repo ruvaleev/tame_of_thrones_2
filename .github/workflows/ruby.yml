@@ -1,0 +1,81 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# This workflow will download a prebuilt Ruby version, install dependencies and run tests with Rake
+# For more information see: https://github.com/marketplace/actions/setup-ruby-jruby-and-truffleruby
+
+name: Ruby
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ruby-version: ['3.0']
+    services:
+      postgres:
+        image: postgres:12.0
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: --entrypoint redis-server
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+    - name: Install Ruby version specified in `.ruby-version`
+      uses: eregon/use-ruby-action@master
+    - name: Setup cache key and directory for gems cache
+      uses: actions/cache@v1.0.3
+      with:
+        path: vendor/bundle
+        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+        key: ${{ runner.os }}-gem-${{ hashFiles('**/Gemfile.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-gem-
+    - name: Install dependencies
+      run: |
+        gem install bundler bundler-audit
+        bundle install --jobs 4 --retry 3 --path vendor/bundle
+    - name: Prepare database
+      env:
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/tame_of_thrones_2_test
+        REDIS_URL: redis://localhost:6379/0
+        RAILS_ENV: test
+        RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      run: |
+        bundle exec rails db:create db:schema:load
+    - name: Run bundler audit
+      run: bundler-audit
+    - name: Run rubocop
+      run: bundle exec rubocop .
+    - name: Run database consistency
+      env:
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/tame_of_thrones_2_test
+        REDIS_URL: redis://localhost:6379/0
+        RAILS_ENV: test
+        RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      run: bundle exec database_consistency
+    - name: Run tests
+      env:
+        DATABASE_URL: postgres://postgres:postgres@localhost:5432/tame_of_thrones_2_test
+        REDIS_URL: redis://localhost:6379/0
+        RAILS_ENV: test
+        RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+      run: bundle exec rspec

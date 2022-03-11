@@ -1,0 +1,12 @@
+AllCops:
+  TargetRubyVersion: 3.0
+  DisplayCopNames: true
+  Exclude:
+    - 'bin/*'
+    - 'db/*'
+    - 'db/migrate/*'
+    - 'notes/*'
+  NewCops: enable
+
+Style/Documentation:
+  Enabled: false
